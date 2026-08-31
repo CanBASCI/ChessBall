@@ -2,20 +2,23 @@
 
 Satranç + futbol 1v1 prototip. Tarayıcıda oyna: [index.html](./index.html)
 
+Cursor / devam için tüm kurallar: [SAH_SAHA_SPEC.md](./SAH_SAHA_SPEC.md)
+
 ## Nasıl
 - Sen beyaz, rakip PC
 - Taşa bas, parlayan kareye bas
-- Pas: top sende, mavi yanan kendi oyuncuna bas (yön + menzil; aradaki rakip keser)
-- Gol: topu kale karesine yürüyerek sok (`D/E/F` × 11)
+- Pas: yalnız kendi oyuncuna, taşın yönü + menzili; aradaki rakip keser
+- Şut: yön + şut menzili, çizgide rakip yoksa kırmızı kale karesine bas
+- Gol: şut VEYA topu kale karesine yürüterek (`D/E/F` × 1 veya 11)
 - Pres: topu tutan rakibe yürü. Kaybeden kendi hareketiyle kaçar; kaçış onun hamlesidir, sıra presleyene döner
 
 ## Taşlar
-| Figür | Yürü | Götür | Pas |
-|---|---|---|---|
-| KAL | 1, ceza sahası | 1 | 2 her yön |
-| STP | at | at | 2 düz |
-| KNT | 4 düz | 2 düz | 4 düz |
-| ON | 3 çapraz | 1 çapraz | 3 çapraz |
-| FRV | 2 her | 2 her | 3 her |
+| Figür | Yürü | Götür | Pas | Şut |
+|---|---|---|---|---|
+| KAL | 1, ceza sahası | 1 | 2 her | 1 her |
+| STP | at | at | 2 düz | 2 düz |
+| KNT | 4 düz | 2 düz | 4 düz | 3 düz |
+| ON | 3 çapraz | 1 çapraz | 3 çapraz | 3 çapraz |
+| FRV | 2 her | 2 her | 3 her | 4 her |
 
 Repo: https://github.com/CanBASCI/ChessBall
