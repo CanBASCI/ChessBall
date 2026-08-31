@@ -1,0 +1,507 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+<title>Şah Saha — Sen vs PC</title>
+<style>
+  :root {
+    --bg:#070c0a; --hud:#101814; --line:#c4a854; --ivory:#ece2cc;
+    --crimson:#94202a; --gold:#d4af52; --muted:#8b9688; --grass1:#123020; --grass2:#0e281c;
+    --goal:#302a10;
+  }
+  * { box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+  html,body { margin:0; height:100%; background:var(--bg); color:var(--ivory);
+    font-family: "Segoe UI", "Noto Sans", system-ui, sans-serif; overflow:hidden; }
+  #app { height:100%; display:flex; flex-direction:column; max-width:520px; margin:0 auto; }
+  header { padding:10px 14px 6px; }
+  .top { display:flex; justify-content:space-between; align-items:flex-end; }
+  .who { font-size:11px; letter-spacing:.12em; color:var(--muted); }
+  .score { font-size:42px; line-height:1; font-weight:700; }
+  .score.r { color:#e8aaaa; }
+  .midscore { color:var(--gold); font-size:28px; padding:0 10px; }
+  .status { margin-top:6px; font-size:13px; color:var(--muted); min-height:18px; }
+  #boardWrap { flex:1; display:flex; align-items:center; justify-content:center; padding:0 8px; }
+  #board { display:grid; grid-template-columns:repeat(9,1fr); width:min(96vw,500px); aspect-ratio:9/11;
+    border:2px solid var(--line); border-radius:10px; overflow:hidden; box-shadow:0 0 0 8px #0b1610; }
+  .cell { position:relative; background:var(--grass1); }
+  .cell.alt { background:var(--grass2); }
+  .cell.goal { background:var(--goal); }
+  .cell.mid { box-shadow: inset 0 -1px 0 var(--line); }
+  .cell.legal { outline:2px solid var(--gold); outline-offset:-3px; }
+  .cell.legal.pass { outline-color:#6cb3ff; }
+  .cell.legal.shot { outline-color:#ff6b4a; }
+  .cell.legal.press { outline-color:#ff9f43; }
+  .cell.sel { outline:3px solid var(--gold); outline-offset:-3px; }
+  .dot { position:absolute; left:50%; top:50%; width:12px; height:12px; margin:-6px 0 0 -6px;
+    border-radius:50%; background:var(--gold); pointer-events:none; }
+  .piece { position:absolute; inset:8%; border-radius:50%; display:flex; align-items:center; justify-content:center;
+    font-size:10px; font-weight:800; letter-spacing:.02em; border:2px solid #0006; user-select:none; }
+  .piece.W { background:var(--ivory); color:#2a2216; }
+  .piece.B { background:var(--crimson); color:#fff; }
+  .piece.has { box-shadow:0 0 0 3px var(--gold); }
+  .ball { position:absolute; left:50%; top:50%; width:18px; height:18px; margin:-9px 0 0 -9px;
+    border-radius:50%; background:radial-gradient(circle at 35% 30%, #f3de8a, #b8860b);
+    border:1px solid #7a5a12; z-index:2; pointer-events:none; }
+  footer { padding:8px 12px 16px; }
+  .log { background:var(--hud); border:1px solid #24332a; border-radius:12px; padding:10px 12px; min-height:64px;
+    font-size:14px; }
+  .log b { color:var(--gold); font-weight:600; }
+  .row { display:flex; gap:8px; margin-top:8px; }
+  button { flex:1; background:#1a2620; color:var(--ivory); border:1px solid #33443a; border-radius:10px;
+    padding:10px 8px; font-size:13px; }
+  button.primary { background:#3a3018; border-color:var(--gold); color:var(--gold); }
+  button:disabled { opacity:.4; }
+</style>
+</head>
+<body>
+<div id="app">
+  <header>
+    <div class="top">
+      <div><div class="who">SEN</div><div class="score" id="sw">0</div></div>
+      <div class="midscore">–</div>
+      <div style="text-align:right"><div class="who">PC</div><div class="score r" id="sb">0</div></div>
+    </div>
+    <div class="status" id="status">Şah Saha · sen vs PC</div>
+  </header>
+  <div id="boardWrap"><div id="board"></div></div>
+  <footer>
+    <div class="log" id="log"><b>Diziliş hazır.</b> Taşına bas, sarı kareye bas. Topu alıp kaleye götür.</div>
+    <div class="row">
+      <button id="btnNew">Yeni maç</button>
+      <button id="btnHint" class="primary">PC oynasın (sırasıysa)</button>
+    </div>
+  </footer>
+</div>
+<script>
+const FILES = "ABCDEFGHI";
+const KIND = {K:"KAL",S:"STP",N:"KNT",O:"ON",F:"FRV"};
+const WALK = {K:1,S:0,N:4,O:3,F:2};
+const CARRY = {K:1,S:1,N:2,O:1,F:2};
+const PASS = {K:2,S:2,N:4,O:3,F:3};
+const SHOT = {K:1,S:2,N:3,O:3,F:4};
+function name(f,r){ return FILES[f]+r; }
+function cheb(a,b){ return Math.max(Math.abs(a.f-b.f), Math.abs(a.r-b.r)); }
+function isGoal(f,r){ return (r===1||r===11) && f>=3 && f<=5; }
+function ownGoalRank(side){ return side==="W"?1:11; }
+function oppGoalRank(side){ return side==="W"?11:1; }
+function inPenalty(side,f,r){
+  if(f<2||f>6) return false;
+  return side==="W" ? r>=1&&r<=3 : r>=9&&r<=11;
+}
+function forwardDir(side){ return side==="W"?1:-1; }
+function clone(st){
+  return {
+    pieces: st.pieces.map(p=>({...p})),
+    ball:{...st.ball}, holder: st.holder, turn: st.turn, ply: st.ply,
+    score:[...st.score], noShot: st.noShot, passStreak: st.passStreak,
+    lastPair: st.lastPair && [...st.lastPair], log: st.log, winner: st.winner,
+    kickPlies: st.kickPlies, pressShieldId: st.pressShieldId||null,
+    staggerId: st.staggerId||null, clearFlagsOnSide: st.clearFlagsOnSide||null,
+    pendingRetreatId: st.pendingRetreatId||null,
+    pendingFrom: st.pendingFrom ? {...st.pendingFrom} : null
+  };
+}
+function startState(){
+  const pieces = [
+    {id:"WK",side:"W",kind:"K",f:4,r:2},
+    {id:"WS1",side:"W",kind:"S",f:2,r:3},
+    {id:"WS2",side:"W",kind:"S",f:6,r:3},
+    {id:"WO",side:"W",kind:"O",f:3,r:4},
+    {id:"WF",side:"W",kind:"F",f:4,r:5},
+    {id:"BK",side:"B",kind:"K",f:4,r:10},
+    {id:"BS1",side:"B",kind:"S",f:3,r:9},
+    {id:"BS2",side:"B",kind:"S",f:5,r:9},
+    {id:"BN",side:"B",kind:"N",f:1,r:8},
+    {id:"BF",side:"B",kind:"F",f:4,r:8},
+  ];
+  return {pieces, ball:{f:4,r:6}, holder:null, turn:"W", ply:1, score:[0,0],
+    noShot:2, passStreak:0, lastPair:null, log:"Maç başladı.", winner:null, kickPlies:2,
+    pressShieldId:null, staggerId:null, clearFlagsOnSide:null, pendingRetreatId:null, pendingFrom:null};
+}
+function at(st,f,r){ return st.pieces.find(p=>p.f===f&&p.r===r)||null; }
+function byId(st,id){ return st.pieces.find(p=>p.id===id)||null; }
+function holderP(st){ return st.holder? byId(st,st.holder):null; }
+function pathClear(st,f0,r0,f1,r1){
+  const df=Math.sign(f1-f0), dr=Math.sign(r1-r0);
+  let f=f0+df, r=r0+dr;
+  while(f!==f1 || r!==r1){
+    if(at(st,f,r)) return false;
+    if(st.ball.f===f && st.ball.r===r && st.holder===null) return false;
+    f+=df; r+=dr;
+  }
+  return true;
+}
+function passPathClear(st, passer, f1, r1){
+  const df=Math.sign(f1-passer.f), dr=Math.sign(r1-passer.r);
+  let f=passer.f+df, r=passer.r+dr;
+  while(f!==f1 || r!==r1){
+    const hit=at(st,f,r);
+    if(hit && hit.side!==passer.side) return false;
+    f+=df; r+=dr;
+  }
+  return true;
+}
+function rayOk(kind, df, dr){
+  if(df===0 && dr===0) return false;
+  const ortho = df===0 || dr===0;
+  const diag = Math.abs(df)===Math.abs(dr);
+  if(kind==="S") return false;
+  if(kind==="N") return ortho;
+  if(kind==="O") return diag;
+  if(kind==="K") return Math.max(Math.abs(df),Math.abs(dr))===1;
+  if(kind==="F") return ortho || diag;
+  return ortho||diag;
+}
+function knightDeltas(){ return [[1,2],[2,1],[-1,2],[-2,1],[1,-2],[2,-1],[-1,-2],[-2,-1]]; }
+function canEnter(st,p,f,r, asPress){
+  if(f<0||f>8||r<1||r>11) return false;
+  if(p.kind==="K"){
+    if(!inPenalty(p.side,f,r)) return false;
+  } else if(isGoal(f,r)){
+    if(st.holder!==p.id) return false;
+    if(st.kickPlies>0) return false;
+  }
+  const occ = at(st,f,r);
+  if(occ && occ.id!==p.id){
+    if(asPress && occ.id===st.holder && occ.side!==p.side) return true;
+    return false;
+  }
+  return true;
+}
+function walkSquares(st,p,limit){
+  const out=[];
+  if(p.kind==="S"){
+    for(const [df,dr] of knightDeltas()){
+      const f=p.f+df, r=p.r+dr;
+      if(canEnter(st,p,f,r,false) || canEnter(st,p,f,r,true)) out.push({f,r});
+    }
+    return out;
+  }
+  for(let r=1;r<=11;r++) for(let f=0;f<=8;f++){
+    const df=f-p.f, dr=r-p.r;
+    const dist=Math.max(Math.abs(df),Math.abs(dr));
+    if(dist<1||dist>limit) continue;
+    if(!rayOk(p.kind,df,dr)) continue;
+    if(p.kind!=="K" && !pathClear(st,p.f,p.r,f,r)) continue;
+    if(canEnter(st,p,f,r,false) || canEnter(st,p,f,r,true)) out.push({f,r});
+  }
+  return out;
+}
+function offside(st,p,target){
+  const dir = forwardDir(p.side);
+  if((target.r - p.r)*dir <= 0) return false;
+  const defenders = st.pieces.filter(x=>x.side!==p.side && x.kind!=="K");
+  return !defenders.some(d => (d.r - target.r)*dir > 0);
+}
+function legalMoves(st, pid){
+  const p = byId(st,pid);
+  if(!p || p.side!==st.turn || st.winner) return [];
+  if(st.pendingRetreatId) return [];
+  if(st.staggerId && p.id===st.staggerId) return [];
+  const moves=[];
+  const has = st.holder===p.id;
+  const sqs = (p.kind==="S") ? walkSquares(st,p,1) : walkSquares(st,p, has?CARRY[p.kind]:WALK[p.kind]);
+  for(const s of sqs){
+    const occ=at(st,s.f,s.r);
+    if(occ && occ.id===st.holder && occ.side!==p.side){
+      const shielded = st.pressShieldId && occ.id===st.pressShieldId;
+      const staggered = st.staggerId && p.id===st.staggerId;
+      if(!shielded && !staggered) moves.push({type:"press", f:s.f, r:s.r, pid});
+    } else if(!occ){
+      const pickup = !has && st.holder===null && st.ball.f===s.f && st.ball.r===s.r;
+      moves.push({type: has?"carry":"walk", f:s.f, r:s.r, pid, pickup, goal:isGoal(s.f,s.r)});
+    }
+  }
+  if(has){
+    const pr = PASS[p.kind];
+    for(const mate of st.pieces){
+      if(mate.side!==p.side || mate.id===p.id) continue;
+      const f=mate.f, r=mate.r, df=f-p.f, dr=r-p.r;
+      if(p.kind==="S"){
+        if(!(df===0||dr===0)) continue;
+        if(Math.max(Math.abs(df),Math.abs(dr))>pr) continue;
+      } else {
+        if(!rayOk(p.kind,df,dr)) continue;
+        if(Math.max(Math.abs(df),Math.abs(dr))>pr) continue;
+      }
+      if(p.kind!=="K" && !passPathClear(st,p,f,r)) continue;
+      if(offside(st,p,{f,r})) continue;
+      if(st.passStreak>=4 && st.lastPair && st.lastPair.includes(p.id) && st.lastPair.includes(mate.id)) continue;
+      moves.push({type:"pass", f,r,pid, recv:mate.id});
+    }
+  }
+  return moves;
+}
+function allMoves(st){ return st.pieces.filter(p=>p.side===st.turn).flatMap(p=>legalMoves(st,p.id)); }
+function retreatSquares(st, vic){
+  const from = st.pendingFrom || {f:vic.f,r:vic.r};
+  const ghost = {...vic, f:from.f, r:from.r};
+  const dummy = {...st, pieces: st.pieces.filter(x=>x.id!==vic.id).concat([ghost])};
+  const sqs = walkSquares(dummy, ghost, ghost.kind==="S"?1:WALK[ghost.kind]);
+  const out=[];
+  for(const s of sqs){
+    if(s.f===ghost.f && s.r===ghost.r) continue;
+    if(at(st,s.f,s.r)) continue;
+    if(st.holder && byId(st,st.holder) && byId(st,st.holder).f===s.f && byId(st,st.holder).r===s.r) continue;
+    if(st.ball.f===s.f && st.ball.r===s.r) continue;
+    out.push(s);
+  }
+  if(!out.length){
+    for(let df=-1;df<=1;df++) for(let dr=-1;dr<=1;dr++){
+      if(!df&&!dr) continue;
+      const f=from.f+df, r=from.r+dr;
+      if(f<0||f>8||r<1||r>11) continue;
+      if(at(st,f,r)) continue;
+      if(vic.kind!=="K" && isGoal(f,r)) continue;
+      if(vic.kind==="K" && !inPenalty(vic.side,f,r)) continue;
+      out.push({f,r});
+    }
+  }
+  return out;
+}
+function pickAiRetreat(st, vic){
+  const opts=retreatSquares(st,vic);
+  if(!opts.length) return null;
+  const ball=st.ball;
+  return opts.slice().sort((a,b)=> (Math.abs(b.r-ownGoalRank(vic.side))*2 + cheb(b,ball)) - (Math.abs(a.r-ownGoalRank(vic.side))*2 + cheb(a,ball)))[0];
+}
+function applyRetreat(st, dest){
+  const n=clone(st);
+  const vic=byId(n,n.pendingRetreatId);
+  if(!vic){ n.pendingRetreatId=null; n.pendingFrom=null; return n; }
+  const opts=retreatSquares(n,vic);
+  let d=dest && opts.some(o=>o.f===dest.f&&o.r===dest.r) ? dest : pickAiRetreat(n,vic);
+  if(d){ vic.f=d.f; vic.r=d.r; }
+  else if(n.pendingFrom){ vic.f=n.pendingFrom.f; vic.r=n.pendingFrom.r; }
+  n.log = `PRES çözüldü · ${KIND[vic.kind]} ${name(vic.f,vic.r)} · sıra rakipte`;
+  n.pendingRetreatId=null; n.pendingFrom=null;
+  n.turn = vic.side;
+  endTurnExtras(n,false);
+  return n;
+}
+function scoreGoal(n,p,f,r){
+  const own = (p.side==="W" && r===1) || (p.side==="B" && r===11);
+  if(own){ if(p.side==="W") n.score[1]++; else n.score[0]++; n.log="Kendi kalesine girdi! Gol."; }
+  else { if(p.side==="W") n.score[0]++; else n.score[1]++; n.log=`GOL! ${KIND[p.kind]} ${name(f,r)}`; }
+  n.ball={f:4,r:6}; n.holder=null;
+  n.pressShieldId=null; n.staggerId=null; n.clearFlagsOnSide=null;
+  n.pendingRetreatId=null; n.pendingFrom=null;
+  resetAfterGoal(n, p.side);
+  if(n.score[0]>=2 || n.score[1]>=2){
+    n.winner = n.score[0]>=2?"W":"B";
+    n.log += n.winner==="W"?" Sen kazandın.":" PC kazandı.";
+    n.turn = n.winner; return n;
+  }
+  n.kickPlies=2;
+  n.turn = own ? p.side : (p.side==="W"?"B":"W");
+  n.ply = 1;
+  endTurnExtras(n,true);
+  return n;
+}
+function applyMove(st, mv){
+  const n = clone(st);
+  const p = byId(n,mv.pid);
+  n.log = "";
+  if(mv.type==="walk"||mv.type==="carry"){
+    p.f=mv.f; p.r=mv.r;
+    if(mv.type==="carry"){ n.ball={f:mv.f,r:mv.r}; }
+    if(mv.pickup || (n.ball.f===p.f && n.ball.r===p.r && !n.holder)){
+      n.holder=p.id; n.ball={f:p.f,r:p.r};
+      n.log = `${KIND[p.kind]} topu aldı (${name(p.f,p.r)})`;
+    } else n.log = `${KIND[p.kind]} → ${name(p.f,p.r)}`;
+    n.passStreak=0; n.lastPair=null;
+    if(n.holder===p.id && isGoal(p.f,p.r)) return scoreGoal(n,p,p.f,p.r);
+  } else if(mv.type==="press"){
+    const vic = holderP(n);
+    n.pendingFrom = {f:vic.f, r:vic.r};
+    p.f=mv.f; p.r=mv.r;
+    n.holder=p.id; n.ball={f:p.f,r:p.r};
+    vic.f=-1; vic.r=0;
+    n.pressShieldId = p.id; n.staggerId = vic.id; n.clearFlagsOnSide = vic.side;
+    n.pendingRetreatId = vic.id; n.passStreak=0; n.lastPair=null;
+    n.log = `PRES! ${KIND[p.kind]} topu aldı · kaçış seç`;
+    return n;
+  } else if(mv.type==="pass"){
+    n.ball={f:mv.f,r:mv.r};
+    if(mv.recv){ n.holder=mv.recv; n.log=`Pas ${name(mv.f,mv.r)} · ${KIND[byId(n,mv.recv).kind]} aldı`; }
+    else { n.holder=null; n.log=`Pas ${name(mv.f,mv.r)}`; }
+    if(n.lastPair && mv.recv && n.lastPair.includes(mv.pid) && n.lastPair.includes(mv.recv)) n.passStreak++;
+    else n.passStreak = mv.recv?1:0;
+    n.lastPair = mv.recv?[mv.pid,mv.recv]:null;
+  }
+  endTurnExtras(n,false);
+  return n;
+}
+function resetAfterGoal(n){
+  const Wpos = {K:[4,2], S:[[2,3],[6,3]], N:[[1,4],[7,4]], O:[[3,4],[5,4]], F:[[4,5],[3,5]]};
+  const Bpos = {K:[4,10], S:[[3,9],[5,9]], N:[[1,8],[7,8]], O:[[3,8],[5,8]], F:[[4,8],[5,8]]};
+  const used={W:{S:0,N:0,O:0,F:0},B:{S:0,N:0,O:0,F:0}};
+  for(const p of n.pieces){
+    const tab = p.side==="W"?Wpos:Bpos;
+    if(p.kind==="K"){ p.f=tab.K[0]; p.r=tab.K[1]; }
+    else {
+      const i = used[p.side][p.kind]++;
+      const sl = tab[p.kind][Math.min(i, tab[p.kind].length-1)];
+      p.f=sl[0]; p.r=sl[1];
+    }
+  }
+}
+function endTurnExtras(n, afterGoal){
+  if(afterGoal) return;
+  n.kickPlies = Math.max(0, n.kickPlies-1);
+  const acted = n.turn;
+  n.turn = n.turn==="W"?"B":"W";
+  if(acted && acted===n.clearFlagsOnSide){
+    n.pressShieldId=null; n.staggerId=null; n.clearFlagsOnSide=null;
+  }
+  if(n.turn==="W") n.ply++;
+  if(n.ply>24 && !n.winner){
+    if(n.score[0]!==n.score[1]) n.winner = n.score[0]>n.score[1]?"W":"B";
+    else n.winner = n.holder ? byId(n,n.holder).side : (n.ball.r>=6?"W":"B");
+    n.log += n.winner==="W"?" Süre bitti, sen kazandın.":" Süre bitti, PC kazandı.";
+  }
+}
+function evalState(st, side){
+  let v = (st.score[side==="W"?0:1]-st.score[side==="W"?1:0])*200;
+  if(st.winner===side) v+=9999;
+  if(st.winner && st.winner!==side) v-=9999;
+  const goalR = oppGoalRank(side);
+  if(st.holder){
+    const h=holderP(st);
+    if(h.side===side) v += 30 - cheb(h,{f:4,r:goalR})*4;
+    else v -= 24 - cheb(h,{f:4,r:ownGoalRank(side)})*3;
+  } else v += 8 - cheb(st.ball,{f:4,r:goalR});
+  return v;
+}
+function aiPick(st){
+  const moves = allMoves(st);
+  if(!moves.length) return null;
+  let best=null, bestV=-1e9;
+  for(const mv of moves){
+    const n = applyMove(st,mv);
+    let v = evalState(n, st.turn);
+    if(n.score[st.turn==="W"?0:1] > st.score[st.turn==="W"?0:1]) v += 400;
+    if(mv.type==="press") v += 18;
+    v += Math.random()*3;
+    if(v>bestV){ bestV=v; best=mv; }
+  }
+  return best;
+}
+let ST = startState(), selected=null, legal=[], thinking=false;
+const boardEl = document.getElementById("board");
+const cells=[];
+for(let row=0; row<11; row++){
+  for(let col=0; col<9; col++){
+    const r=11-row, f=col;
+    const div=document.createElement("div");
+    div.className="cell";
+    if((row+col)%2) div.classList.add("alt");
+    if(isGoal(f,r)) div.classList.add("goal");
+    if(r===6) div.classList.add("mid");
+    div.dataset.f=f; div.dataset.r=r;
+    div.addEventListener("click", ()=>onCell(f,r));
+    boardEl.appendChild(div);
+    cells.push(div);
+  }
+}
+function cellEl(f,r){ return cells.find(c=>+c.dataset.f===f && +c.dataset.r===r); }
+function render(){
+  if(ST.pendingRetreatId){
+    const vic=byId(ST,ST.pendingRetreatId);
+    if(vic && vic.side==="W"){
+      legal = retreatSquares(ST,vic).map(s=>({f:s.f,r:s.r,type:"walk"}));
+      selected=vic.id;
+    }
+  }
+  document.getElementById("sw").textContent=ST.score[0];
+  document.getElementById("sb").textContent=ST.score[1];
+  const who = ST.winner ? (ST.winner==="W"?"Oyun bitti · sen kazandın":"Oyun bitti · PC kazandı")
+    : ST.pendingRetreatId ? "Kaçış seç"
+    : (ST.turn==="W"?"Senin sıran":"PC düşünüyor…");
+  document.getElementById("status").textContent = `Tur ${ST.ply} · ${who}` + (ST.pressShieldId?" · pres kalkanı":"");
+  document.getElementById("log").innerHTML = `<b>${ST.log||"Hamle seç"}</b>`;
+  for(const c of cells){ c.classList.remove("legal","pass","shot","press","sel"); c.innerHTML=""; }
+  if(!ST.holder){
+    const b=cellEl(ST.ball.f,ST.ball.r);
+    if(b){ const ball=document.createElement("div"); ball.className="ball"; b.appendChild(ball); }
+  }
+  for(const p of ST.pieces){
+    if(p.f<0) continue;
+    const c=cellEl(p.f,p.r); if(!c) continue;
+    const el=document.createElement("div");
+    el.className="piece "+p.side+(ST.holder===p.id?" has":"");
+    el.textContent=KIND[p.kind];
+    c.appendChild(el);
+    if(selected===p.id) c.classList.add("sel");
+  }
+  for(const m of legal){
+    const c=cellEl(m.f,m.r); if(!c) continue;
+    c.classList.add("legal");
+    if(m.type==="pass") c.classList.add("pass");
+    if(m.type==="press") c.classList.add("press");
+    if(m.goal) c.classList.add("shot");
+    if(!c.querySelector(".dot")){ const d=document.createElement("div"); d.className="dot"; c.appendChild(d); }
+  }
+}
+function onCell(f,r){
+  if(ST.winner) return;
+  if(ST.pendingRetreatId){
+    const vic=byId(ST,ST.pendingRetreatId);
+    if(!vic || vic.side!=="W") return;
+    if(!retreatSquares(ST,vic).some(s=>s.f===f&&s.r===r)) return;
+    ST=applyRetreat(ST,{f,r}); selected=null; legal=[]; render(); afterMove(); return;
+  }
+  if(ST.turn!=="W") return;
+  const occ=at(ST,f,r);
+  if(selected){
+    const opts=legal.filter(m=>m.f===f&&m.r===r);
+    if(opts.length){
+      playHuman(opts.find(m=>m.type==="press")||opts.find(m=>m.type==="pass")||opts[0]);
+      return;
+    }
+  }
+  if(occ && occ.side==="W"){
+    selected=occ.id; legal=legalMoves(ST,occ.id);
+    const passes=legal.filter(m=>m.type==="pass");
+    ST.log = passes.length ? `${KIND[occ.kind]} · pas: `+passes.map(m=>KIND[byId(ST,m.recv).kind]+" "+name(m.f,m.r)).join(", ") : (legal.length?`${KIND[occ.kind]} seçildi`:`Hamle yok`);
+    render(); return;
+  }
+  selected=null; legal=[]; render();
+}
+function resolveAiRetreatIfNeeded(){
+  if(!ST.pendingRetreatId) return false;
+  const vic=byId(ST,ST.pendingRetreatId);
+  if(!vic || vic.side!=="B") return false;
+  ST=applyRetreat(ST, pickAiRetreat(ST,vic)); return true;
+}
+function afterMove(){
+  if(ST.pendingRetreatId){
+    const vic=byId(ST,ST.pendingRetreatId);
+    if(vic && vic.side==="B"){
+      thinking=true;
+      setTimeout(()=>{ resolveAiRetreatIfNeeded(); render(); if(!ST.winner && ST.turn==="B") setTimeout(aiTurn, 350); else thinking=false; }, 280);
+      return;
+    }
+    legal = retreatSquares(ST,vic).map(s=>({f:s.f,r:s.r,type:"walk"}));
+    selected=vic.id; thinking=false; render(); return;
+  }
+  if(!ST.winner && ST.turn==="B"){ thinking=true; setTimeout(aiTurn, 450); } else thinking=false;
+}
+function playHuman(mv){ ST = applyMove(ST,mv); selected=null; legal=[]; render(); afterMove(); }
+function aiTurn(){
+  if(ST.winner){ thinking=false; render(); return; }
+  if(ST.pendingRetreatId){ resolveAiRetreatIfNeeded(); render(); }
+  if(ST.turn!=="B"){ thinking=false; render(); return; }
+  const mv=aiPick(ST);
+  if(!mv){ ST.log="PC pas geçti"; ST.turn="W"; thinking=false; render(); return; }
+  ST=applyMove(ST,mv); render();
+  if(ST.pendingRetreatId){ afterMove(); return; }
+  if(!ST.winner && ST.turn==="B") setTimeout(aiTurn, 380); else thinking=false;
+}
+document.getElementById("btnNew").onclick=()=>{ ST=startState(); selected=null; legal=[]; thinking=false; render(); };
+document.getElementById("btnHint").onclick=()=>{ if(ST.turn==="B" && !thinking){ thinking=true; aiTurn(); } };
+render();
+</script>
+</body>
+</html>
