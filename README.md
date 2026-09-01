@@ -1,27 +1,27 @@
-# ChessBall — Şah Saha
+# ChessBall
 
-Satranç + futbol 1v1 prototip. Tarayıcıda oyna: [index.html](./index.html)
+Chess + football hybrid 1v1 prototype. Play in browser: [index.html](./index.html)
 
-## Dokümantasyon
+## Documentation
 
 - 📋 **[Project Specification](./PROJECT_SPEC.md)** — Complete game rules, architecture, and roadmap
 - 📝 **[Coding Rules](./CODING_RULES.md)** — Development standards and best practices
 
-## Nasıl
-- Sen beyaz, rakip PC
-- Taşa bas, parlayan kareye bas
-- Pas: yalnız kendi oyuncuna, taşın yönü + menzili; aradaki rakip keser
-- Şut: yön + şut menzili, çizgide rakip yoksa kırmızı kale karesine bas
-- Gol: şut VEYA topu kale karesine yürüterek (`D/E/F` × 1 veya 11)
-- Pres: topu tutan rakibe yürü. Kaybeden kendi hareketiyle kaçar; kaçış onun hamlesidir, sıra presleyene döner
+## How to Play
+- You are white, opponent is AI
+- Click piece, then click highlighted square
+- Pass: Only to your pieces, within range; opponent pieces intercept
+- Shot: Within shot range, click red goal square if path is clear
+- Goal: Shoot OR carry ball into goal square (`D/E/F` × 1 or 11)
+- Press: Walk onto opponent ball carrier. Loser retreats; retreat counts as their turn, then presser's side continues
 
-## Taşlar
-| Figür | Yürü | Götür | Pas | Şut |
+## Pieces
+| Piece | Walk | Carry | Pass | Shot |
 |---|---|---|---|---|
-| KAL | 1, ceza sahası | 1 | 2 her | 1 her |
-| STP | at | at | 2 düz | 2 düz |
-| KNT | 4 düz | 2 düz | 4 düz | 3 düz |
-| ON | 3 çapraz | 1 çapraz | 3 çapraz | 3 çapraz |
-| FRV | 2 her | 2 her | 3 her | 4 her |
+| KAL (GK) | 1, penalty area | 1 | 2 any | 1 any |
+| STP (DF) | knight | knight | 2 straight | 2 straight |
+| KNT (WG) | 4 straight | 2 straight | 4 straight | 3 straight |
+| ON (AM) | 3 diagonal | 1 diagonal | 3 diagonal | 3 diagonal |
+| FRV (FW) | 2 any | 2 any | 3 any | 4 any |
 
 Repo: https://github.com/CanBASCI/ChessBall
