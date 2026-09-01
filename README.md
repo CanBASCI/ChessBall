@@ -2,7 +2,10 @@
 
 Satranç + futbol 1v1 prototip. Tarayıcıda oyna: [index.html](./index.html)
 
-Cursor / devam için tüm kurallar: [SAH_SAHA_SPEC.md](./SAH_SAHA_SPEC.md)
+## Dokümantasyon
+
+- 📋 **[Project Specification](./PROJECT_SPEC.md)** — Complete game rules, architecture, and roadmap
+- 📝 **[Coding Rules](./CODING_RULES.md)** — Development standards and best practices
 
 ## Nasıl
 - Sen beyaz, rakip PC
